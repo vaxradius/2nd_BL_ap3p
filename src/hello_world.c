@@ -1,18 +1,5 @@
 //*****************************************************************************
 //
-//! @file hello_world.c
-//!
-//! @brief A simple "Hello World" example.
-//!
-//! Purpose: This example prints a "Hello World" message with some device info.
-//!
-//! Printing takes place over the ITM at 1M Baud.
-//!
-//
-//*****************************************************************************
-
-//*****************************************************************************
-//
 // Copyright (c) 2020, Ambiq Micro
 // All rights reserved.
 //
@@ -54,6 +41,58 @@
 #include "am_util.h"
 
 #include "am_bootloader.h"
+#include "ios_fifo.h"
+
+#define FW_LINK_ADDRESS (0x10000)
+
+#define START_ADDR 0x10000000
+#define TOTAL_LENGTH (30*1024)
+
+__asm void am_bootloader_clear_image_run(am_bootloader_image_t *psImage);
+
+bool if_ramdump_required(void)
+{
+	return true;
+}
+
+void spi_ramdump(void)
+{
+	uint32_t numWritten = 0;
+	uint32_t ui32UsedSpace = 0;
+	uint32_t ui32LeftSpace = 0;
+	uint32_t ui32TotalSent = 0;
+
+	//
+    // Enable the IOS
+    //
+    ios_set_up();
+
+    //
+    // Enable interrupts so we can receive messages from the boot host.
+    //
+    am_hal_interrupt_master_enable();
+
+	while(ui32TotalSent < TOTAL_LENGTH)
+	{
+		am_hal_ios_fifo_space_left(g_pIOSHandle, &ui32LeftSpace);
+
+		if(ui32LeftSpace >= 512)
+		{
+			am_hal_ios_fifo_write(g_pIOSHandle, (uint8_t *)(START_ADDR+ui32TotalSent), (ui32TotalSent+512<=TOTAL_LENGTH? 512:(512-((ui32TotalSent+512)-TOTAL_LENGTH))), &numWritten);
+			ui32TotalSent += numWritten;
+		}
+        // If we were Idle - need to inform Host if there is new data
+        if (g_iosState == AM_IOSTEST_SLAVE_STATE_NODATA)
+        {
+            am_hal_ios_fifo_space_used(g_pIOSHandle, &ui32UsedSpace);
+            if (ui32UsedSpace)
+            {
+                g_iosState = AM_IOSTEST_SLAVE_STATE_DATA;
+                inform_host();
+            }
+        }
+	}
+}
 
 //*****************************************************************************
 //
@@ -63,8 +102,7 @@
 int
 main(void)
 {
-    am_util_id_t sIdDevice;
-    uint32_t ui32StrBuf;
+   	am_bootloader_image_t sImage;
     //
     // Set the clock frequency.
     //
@@ -90,95 +128,15 @@ main(void)
     // Print the banner.
     //
     am_util_stdio_terminal_clear();
-    am_util_stdio_printf("Hello World!\n\n");
+    am_util_stdio_printf("2nd Bootloader\n\n");
 
-    //
-    // Print the device info.
-    //
-    am_util_id_device(&sIdDevice);
-    am_util_stdio_printf("Vendor Name: %s\n", sIdDevice.pui8VendorName);
-    am_util_stdio_printf("Device type: %s\n", sIdDevice.pui8DeviceName);
+	if(if_ramdump_required())
+		spi_ramdump();
 
-
-    am_util_stdio_printf("Qualified: %s\n",
-                         sIdDevice.sMcuCtrlDevice.ui32Qualified ?
-                         "Yes" : "No");
-
-    am_util_stdio_printf("Device Info:\n"
-                         "\tPart number: 0x%08X\n"
-                         "\tChip ID0:    0x%08X\n"
-                         "\tChip ID1:    0x%08X\n"
-                         "\tRevision:    0x%08X (Rev%c%c)\n",
-                         sIdDevice.sMcuCtrlDevice.ui32ChipPN,
-                         sIdDevice.sMcuCtrlDevice.ui32ChipID0,
-                         sIdDevice.sMcuCtrlDevice.ui32ChipID1,
-                         sIdDevice.sMcuCtrlDevice.ui32ChipRev,
-                         sIdDevice.ui8ChipRevMaj, sIdDevice.ui8ChipRevMin );
-
-    //
-    // If not a multiple of 1024 bytes, append a plus sign to the KB.
-    //
-    ui32StrBuf = ( sIdDevice.sMcuCtrlDevice.ui32FlashSize % 1024 ) ? '+' : 0;
-    am_util_stdio_printf("\tFlash size:  %7d (%d KB%s)\n",
-                         sIdDevice.sMcuCtrlDevice.ui32FlashSize,
-                         sIdDevice.sMcuCtrlDevice.ui32FlashSize / 1024,
-                         &ui32StrBuf);
-
-    ui32StrBuf = ( sIdDevice.sMcuCtrlDevice.ui32SRAMSize % 1024 ) ? '+' : 0;
-    am_util_stdio_printf("\tSRAM size:   %7d (%d KB%s)\n\n",
-                         sIdDevice.sMcuCtrlDevice.ui32SRAMSize,
-                         sIdDevice.sMcuCtrlDevice.ui32SRAMSize / 1024,
-                         &ui32StrBuf);
-    //
-    // Print the compiler version.
-    //
-    am_util_stdio_printf("App Compiler:    %s\n", COMPILER_VERSION);
-#if defined(AM_PART_APOLLO3)  || defined(AM_PART_APOLLO3P)
-    am_util_stdio_printf("HAL Compiler:    %s\n", g_ui8HALcompiler);
-    am_util_stdio_printf("HAL SDK version: %d.%d.%d\n",
-                         g_ui32HALversion.s.Major,
-                         g_ui32HALversion.s.Minor,
-                         g_ui32HALversion.s.Revision);
-    am_util_stdio_printf("HAL compiled with %s-style registers\n",
-                         g_ui32HALversion.s.bAMREGS ? "AM_REG" : "CMSIS");
-
-    am_hal_security_info_t secInfo;
-    char sINFO[32];
-    uint32_t ui32Status;
-    ui32Status = am_hal_security_get_info(&secInfo);
-    if (ui32Status == AM_HAL_STATUS_SUCCESS)
-    {
-        if ( secInfo.bInfo0Valid )
-        {
-            am_util_stdio_sprintf(sINFO, "INFO0 valid, ver 0x%X", secInfo.info0Version);
-        }
-        else
-        {
-            am_util_stdio_sprintf(sINFO, "INFO0 invalid");
-        }
-
-        am_util_stdio_printf("SBL ver: 0x%x - 0x%x, %s\n",
-            secInfo.sblVersion, secInfo.sblVersionAddInfo, sINFO);
-    }
-    else
-    {
-        am_util_stdio_printf("am_hal_security_get_info failed 0x%X\n", ui32Status);
-    }
-#endif // AM_PART_APOLLO3
-
-
-
-    //
-    // We are done printing.
-    // Disable debug printf messages on ITM.
-    //
-    am_bsp_debug_printf_disable();
-		
-		{
-			am_bootloader_image_t sImage;
-			sImage.pui32LinkAddress = (uint32_t *)0x10000;
-			am_bootloader_clear_image_run(&sImage);
-		}
+	// Jump to application firmware
+	sImage.pui32LinkAddress = (uint32_t *)FW_LINK_ADDRESS;
+	am_bootloader_clear_image_run(&sImage);
+	
     //
     // Loop forever while sleeping.
     //

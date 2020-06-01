@@ -392,6 +392,11 @@
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\bootloader\am_bootloader.c</FilePath>
             </File>
+            <File>
+              <FileName>ios_fifo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ios_fifo.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
