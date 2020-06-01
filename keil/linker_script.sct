@@ -11,18 +11,9 @@ LR_1 0x0000C000
         * (+RO)
     }
 
-    RWMEM 0x10011000 0x000AF000
-    {
-        * (+RW, +ZI)
-    }
-
     TCM 0x10000000 0x00010000
     {
-        * (.tcm)
-    }
-
-    STACKMEM 0x10010000 0x00001000
-    {
-        startup_keil.o (STACK)
+        * (+RW, +ZI)
+		startup_keil.o (STACK)
     }
 }
