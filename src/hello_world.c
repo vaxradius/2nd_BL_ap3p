@@ -43,16 +43,29 @@
 #include "am_bootloader.h"
 #include "ios_fifo.h"
 
+
+#define AM_RAMDUMP_MAGIC_NUM0 0x48EAAD88
+#define AM_RAMDUMP_MAGIC_NUM1 0xC9705737
+#define AM_RAMDUMP_MAGIC_NUM2 0x0A6B8458
+#define AM_RAMDUMP_MAGIC_NUM3 0xE41A9D74
+#define AM_RAMDUMP_MAGIC_NUM_SIZE (4*4)
+#define AM_RAMDUMP_MAGIC_NUM_START_ADDR (SRAM_BASEADDR+(768*1024)-AM_RAMDUMP_MAGIC_NUM_SIZE)
+
 #define FW_LINK_ADDRESS (0x10000)
 
 #define START_ADDR 0x10000000
-#define TOTAL_LENGTH (30*1024)
+#define TOTAL_LENGTH (768*1024)
 
 __asm void am_bootloader_clear_image_run(am_bootloader_image_t *psImage);
 
 bool if_ramdump_required(void)
 {
-	return true;
+	uint32_t *pu32MagicNum = (uint32_t *)AM_RAMDUMP_MAGIC_NUM_START_ADDR;
+	am_util_stdio_printf("%x %x %x %x\n", *pu32MagicNum, *(pu32MagicNum+1), *(pu32MagicNum+2), *(pu32MagicNum+3));
+	if(*pu32MagicNum == AM_RAMDUMP_MAGIC_NUM0 && *(pu32MagicNum+1) == AM_RAMDUMP_MAGIC_NUM1 && *(pu32MagicNum+2) == AM_RAMDUMP_MAGIC_NUM2 && *(pu32MagicNum+3) == AM_RAMDUMP_MAGIC_NUM3)
+		return true;
+
+	return false;
 }
 
 void spi_ramdump(void)
@@ -127,8 +140,7 @@ main(void)
     //
     // Print the banner.
     //
-    am_util_stdio_terminal_clear();
-    am_util_stdio_printf("2nd Bootloader\n\n");
+    am_util_stdio_printf("2nd Bootloader\n");
 
 	if(if_ramdump_required())
 		spi_ramdump();
@@ -136,9 +148,9 @@ main(void)
 	// Jump to application firmware
 	sImage.pui32LinkAddress = (uint32_t *)FW_LINK_ADDRESS;
 	am_bootloader_clear_image_run(&sImage);
-	
+
     //
-    // Loop forever while sleeping.
+    // Never reach here
     //
     while (1)
     {
